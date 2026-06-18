@@ -20,6 +20,12 @@ class Product:
     marketplace: str = "Mercado Livre"
 
 
+class ProductParseError(RuntimeError):
+    def __init__(self, message: str, partial_product: Product | None = None) -> None:
+        super().__init__(message)
+        self.partial_product = partial_product
+
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -236,7 +242,23 @@ def _product_from_parsed_page(
         price_text = _amazon_price_from_html(html)
 
     if not title or not price_text:
-        raise RuntimeError("Nao consegui ler titulo e preco desse link. Informe os dados manualmente.")
+        partial = None
+        if title or image:
+            partial = Product(
+                title=_clean_title(title) if title else "",
+                price=0,
+                permalink=url,
+                thumbnail=image,
+                sold_quantity=0,
+                available_quantity=1,
+                marketplace=marketplace,
+            )
+        if title and not price_text:
+            raise ProductParseError(
+                "Consegui ler o produto, mas a Amazon nao enviou o preco. Informe o preco manualmente.",
+                partial,
+            )
+        raise ProductParseError("Nao consegui ler titulo e preco desse link. Informe os dados manualmente.", partial)
 
     return Product(
         title=_clean_title(title),
@@ -324,7 +346,7 @@ def _marketplace_from_url(url: str) -> str:
     host = urlparse(url).netloc.lower()
     if "amazon." in host or "amzn." in host:
         return "Amazon"
-    if host in {"amzn.to", "www.amzn.to"}:
+    if host in {"amzn.to", "www.amzn.to", "link.amazon", "www.link.amazon"}:
         return "Amazon"
     if "shopee." in host:
         return "Shopee"
@@ -337,13 +359,38 @@ def marketplace_from_link(url: str) -> str:
     return _marketplace_from_url(url)
 
 
+def _amazon_direct_product_url(url: str) -> str:
+    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", urlparse(url).path, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return f"https://www.amazon.com.br/dp/{match.group(1).upper()}"
+
+
 def _from_amazon_link(url: str, response: requests.Response) -> Product:
-    product = _product_from_parsed_page(
-        response.url or url,
-        response.text,
-        _parser_from_response(response),
-        "Amazon",
-    )
+    try:
+        product = _product_from_parsed_page(
+            response.url or url,
+            response.text,
+            _parser_from_response(response),
+            "Amazon",
+        )
+    except ProductParseError as exc:
+        direct_url = _amazon_direct_product_url(response.url or url)
+        if not direct_url or direct_url == response.url:
+            raise
+        direct_response = requests.get(direct_url, headers=HEADERS, timeout=30)
+        direct_response.raise_for_status()
+        try:
+            product = _product_from_parsed_page(
+                direct_url,
+                direct_response.text,
+                _parser_from_response(direct_response),
+                "Amazon",
+            )
+        except ProductParseError as direct_exc:
+            if direct_exc.partial_product:
+                raise direct_exc
+            raise exc
     image = product.thumbnail or _amazon_image_from_html(response.text)
     return Product(product.title, product.price, url, image, 0, 1, "Amazon")
 

@@ -7,7 +7,7 @@ import html
 import mimetypes
 
 from main import _story_output_path
-from mercadolivre import Product, marketplace_from_link, product_from_link
+from mercadolivre import Product, ProductParseError, marketplace_from_link, product_from_link
 from story_image import create_story
 
 
@@ -402,6 +402,22 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             try:
                 product = product_from_link(link)
+            except ProductParseError as exc:
+                if not title or not price:
+                    partial = exc.partial_product
+                    self._send_html(
+                        _render_page(
+                            error=str(exc),
+                            form={
+                                "link": link,
+                                "title": title or (partial.title if partial else ""),
+                                "price": price,
+                                "thumbnail": thumbnail or (partial.thumbnail if partial else ""),
+                            },
+                        )
+                    )
+                    return
+                product = Product(title, float(price.replace(",", ".")), link, thumbnail, 0, 1, marketplace_from_link(link))
             except Exception:
                 if not title or not price:
                     raise
