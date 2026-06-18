@@ -7,7 +7,7 @@ import html
 import mimetypes
 
 from main import _story_output_path
-from mercadolivre import Product, product_from_link
+from mercadolivre import Product, marketplace_from_link, product_from_link
 from story_image import create_story
 
 
@@ -326,7 +326,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except Exception:
                 if not title or not price:
                     raise
-                product = Product(title, float(price.replace(",", ".")), link, thumbnail, 0, 1, "Oferta")
+                product = Product(title, float(price.replace(",", ".")), link, thumbnail, 0, 1, marketplace_from_link(link))
 
             if title:
                 product = Product(title, product.price, product.permalink, product.thumbnail, 0, 1, product.marketplace)

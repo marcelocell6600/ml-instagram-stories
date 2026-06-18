@@ -26,6 +26,7 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/125.0 Safari/537.36"
     ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
 }
 
@@ -117,6 +118,45 @@ def _first_regex(patterns: list[str], text: str) -> str:
     return ""
 
 
+def _amazon_price_from_html(html: str) -> str:
+    direct_price = _first_regex(
+        [
+            r'id=["\']priceblock_(?:our|deal|sale)price["\'][^>]*>\s*(R\$\s*[\d\.,]+)',
+            r'id=["\']price_inside_buybox["\'][^>]*>\s*(R\$\s*[\d\.,]+)',
+            r'"displayPrice"\s*:\s*"([^"]+)"',
+            r'"priceToPay"[^}]*"displayString"\s*:\s*"([^"]+)"',
+            r'class=["\']a-offscreen["\'][^>]*>\s*(R\$\s*[\d\.,]+)',
+        ],
+        html,
+    )
+    if direct_price:
+        return direct_price
+
+    split_match = re.search(
+        r'class=["\']a-price-whole["\'][^>]*>\s*([\d\.]+)[^<]*<.*?'
+        r'class=["\']a-price-fraction["\'][^>]*>\s*(\d{2})',
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if split_match:
+        return f"{split_match.group(1)},{split_match.group(2)}"
+
+    return ""
+
+
+def _amazon_image_from_html(html: str) -> str:
+    image = _first_regex(
+        [
+            r'id=["\']landingImage["\'][^>]*(?:data-old-hires|src)=["\']([^"\']+)',
+            r'"hiRes"\s*:\s*"([^"]+)"',
+            r'"large"\s*:\s*"([^"]+)"',
+            r'"mainUrl"\s*:\s*"([^"]+)"',
+        ],
+        html,
+    )
+    return image.replace("\\/", "/")
+
+
 def _parser_from_response(response: requests.Response) -> ProductPageParser:
     parser = ProductPageParser()
     parser.feed(response.text)
@@ -180,6 +220,8 @@ def _product_from_parsed_page(
             ],
             html,
         ).replace("\\/", "/")
+    if marketplace == "Amazon" and not image:
+        image = _amazon_image_from_html(html)
     if not price_text:
         price_text = _first_regex(
             [
@@ -190,6 +232,8 @@ def _product_from_parsed_page(
             ],
             html,
         )
+    if marketplace == "Amazon" and not price_text:
+        price_text = _amazon_price_from_html(html)
 
     if not title or not price_text:
         raise RuntimeError("Nao consegui ler titulo e preco desse link. Informe os dados manualmente.")
@@ -280,6 +324,8 @@ def _marketplace_from_url(url: str) -> str:
     host = urlparse(url).netloc.lower()
     if "amazon." in host or "amzn." in host:
         return "Amazon"
+    if host in {"amzn.to", "www.amzn.to"}:
+        return "Amazon"
     if "shopee." in host:
         return "Shopee"
     if "mercadolivre." in host or "mercadolibre." in host or "meli.la" in host:
@@ -287,13 +333,19 @@ def _marketplace_from_url(url: str) -> str:
     return "Oferta"
 
 
+def marketplace_from_link(url: str) -> str:
+    return _marketplace_from_url(url)
+
+
 def _from_amazon_link(url: str, response: requests.Response) -> Product:
-    return _product_from_parsed_page(
-        url,
+    product = _product_from_parsed_page(
+        response.url or url,
         response.text,
         _parser_from_response(response),
         "Amazon",
     )
+    image = product.thumbnail or _amazon_image_from_html(response.text)
+    return Product(product.title, product.price, url, image, 0, 1, "Amazon")
 
 
 def _shopee_ids(url: str) -> tuple[str, str] | None:
