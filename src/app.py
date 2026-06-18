@@ -85,7 +85,7 @@ def _render_page(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Story Mercado Livre</title>
+  <title>Story de Ofertas</title>
   <style>
     * {{ box-sizing: border-box; }}
     body {{
@@ -252,11 +252,11 @@ def _render_page(
   <main class="shell">
     <section>
       <header>
-        <h1>Story Mercado Livre</h1>
+        <h1>Story de Ofertas</h1>
       </header>
       <form class="panel" method="post" action="/generate">
-        <label for="link">Link do Mercado Livre</label>
-        <input id="link" name="link" type="url" required autofocus value="{link_value}" placeholder="https://www.mercadolivre.com.br/...">
+        <label for="link">Link da oferta</label>
+        <input id="link" name="link" type="url" required autofocus value="{link_value}" placeholder="Mercado Livre, Amazon ou Shopee">
 
         <details{details_open}>
           <summary>Ajustes manuais</summary>
@@ -326,14 +326,14 @@ class AppHandler(BaseHTTPRequestHandler):
             except Exception:
                 if not title or not price:
                     raise
-                product = Product(title, float(price.replace(",", ".")), link, thumbnail, 0, 1)
+                product = Product(title, float(price.replace(",", ".")), link, thumbnail, 0, 1, "Oferta")
 
             if title:
-                product = Product(title, product.price, product.permalink, product.thumbnail, 0, 1)
+                product = Product(title, product.price, product.permalink, product.thumbnail, 0, 1, product.marketplace)
             if price:
-                product = Product(product.title, float(price.replace(",", ".")), product.permalink, product.thumbnail, 0, 1)
+                product = Product(product.title, float(price.replace(",", ".")), product.permalink, product.thumbnail, 0, 1, product.marketplace)
             if thumbnail:
-                product = Product(product.title, product.price, product.permalink, thumbnail, 0, 1)
+                product = Product(product.title, product.price, product.permalink, thumbnail, 0, 1, product.marketplace)
 
             output_path = PROJECT_DIR / _story_output_path(str(OUTPUT_DIR), product.title, None)
             create_story(product, output_path)

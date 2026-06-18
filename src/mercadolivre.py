@@ -17,6 +17,7 @@ class Product:
     thumbnail: str
     sold_quantity: int
     available_quantity: int
+    marketplace: str = "Mercado Livre"
 
 
 HEADERS = {
@@ -91,6 +92,10 @@ def _clean_title(value: str) -> str:
         value.replace(" | MercadoLivre", "")
         .replace(" | Mercado Livre", "")
         .replace(" - Mercado Livre", "")
+        .replace(": Amazon.com.br", "")
+        .replace("| Amazon.com.br", "")
+        .replace("| Amazon", "")
+        .replace("| Shopee Brasil", "")
         .strip()
     )
 
@@ -102,6 +107,102 @@ def _normal_price(value: str) -> float:
     else:
         cleaned = cleaned.replace(",", ".")
     return float(cleaned)
+
+
+def _first_regex(patterns: list[str], text: str) -> str:
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            return unescape(match.group(1)).strip()
+    return ""
+
+
+def _parser_from_response(response: requests.Response) -> ProductPageParser:
+    parser = ProductPageParser()
+    parser.feed(response.text)
+    return parser
+
+
+def _product_from_parsed_page(
+    url: str,
+    html: str,
+    parser: ProductPageParser,
+    marketplace: str,
+) -> Product:
+    title = (
+        parser.meta.get("og:title")
+        or parser.meta.get("twitter:title")
+        or parser.meta.get("title")
+        or parser.title.strip()
+    )
+    image = parser.meta.get("og:image") or parser.meta.get("twitter:image") or parser.meta.get("image") or ""
+    price_text = (
+        parser.meta.get("product:price:amount")
+        or parser.meta.get("price")
+        or parser.meta.get("twitter:data1")
+        or ""
+    )
+
+    for script in parser.ld_json:
+        try:
+            data = json.loads(unescape(script))
+        except json.JSONDecodeError:
+            continue
+        items = data if isinstance(data, list) else [data]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            offers = item.get("offers") if isinstance(item.get("offers"), dict) else {}
+            title = title or str(item.get("name") or "")
+            image_value = item.get("image")
+            if not image and isinstance(image_value, str):
+                image = image_value
+            if not image and isinstance(image_value, list) and image_value:
+                image = str(image_value[0])
+            price_text = price_text or str(offers.get("price") or "")
+
+    if not title:
+        title = _first_regex(
+            [
+                r'id=["\']productTitle["\'][^>]*>(.*?)<',
+                r'"name"\s*:\s*"([^"]+)"',
+                r'"title"\s*:\s*"([^"]+)"',
+            ],
+            html,
+        )
+    if not image:
+        image = _first_regex(
+            [
+                r'"hiRes"\s*:\s*"([^"]+)"',
+                r'"large"\s*:\s*"([^"]+)"',
+                r'"imageUrl"\s*:\s*"([^"]+)"',
+                r'"image"\s*:\s*"([^"]+)"',
+            ],
+            html,
+        ).replace("\\/", "/")
+    if not price_text:
+        price_text = _first_regex(
+            [
+                r'"price"\s*:\s*"?([0-9]+(?:[,.][0-9]+)?)"?',
+                r'"priceAmount"\s*:\s*"?([0-9]+(?:[,.][0-9]+)?)"?',
+                r'class=["\']a-offscreen["\'][^>]*>\s*(R\$[^<]+)',
+                r'"current_price":\{"value":([0-9.]+)',
+            ],
+            html,
+        )
+
+    if not title or not price_text:
+        raise RuntimeError("Nao consegui ler titulo e preco desse link. Informe os dados manualmente.")
+
+    return Product(
+        title=_clean_title(title),
+        price=_normal_price(str(price_text)),
+        permalink=url,
+        thumbnail=image,
+        sold_quantity=0,
+        available_quantity=1,
+        marketplace=marketplace,
+    )
 
 
 def _decode_json_text(value: str) -> str:
@@ -135,6 +236,7 @@ def _from_social_html(html: str, permalink: str) -> Product | None:
         thumbnail=thumbnail,
         sold_quantity=0,
         available_quantity=1,
+        marketplace="Mercado Livre",
     )
 
 
@@ -160,66 +262,97 @@ def _from_item_api(item_id: str, permalink: str) -> Product:
         thumbnail=thumbnail,
         sold_quantity=int(data.get("sold_quantity", 0)),
         available_quantity=int(data.get("available_quantity", 0)),
+        marketplace="Mercado Livre",
     )
 
 
-def _from_html(url: str) -> Product:
+def _from_html(url: str, marketplace: str = "Mercado Livre") -> Product:
     response = requests.get(url, headers=HEADERS, timeout=30)
     response.raise_for_status()
     social_product = _from_social_html(response.text, url)
     if social_product:
         return social_product
 
-    parser = ProductPageParser()
-    parser.feed(response.text)
+    return _product_from_parsed_page(url, response.text, _parser_from_response(response), marketplace)
 
-    title = (
-        parser.meta.get("og:title")
-        or parser.meta.get("twitter:title")
-        or parser.meta.get("title")
-        or parser.title.strip()
+
+def _marketplace_from_url(url: str) -> str:
+    host = urlparse(url).netloc.lower()
+    if "amazon." in host or "amzn." in host:
+        return "Amazon"
+    if "shopee." in host:
+        return "Shopee"
+    if "mercadolivre." in host or "mercadolibre." in host or "meli.la" in host:
+        return "Mercado Livre"
+    return "Oferta"
+
+
+def _from_amazon_link(url: str, response: requests.Response) -> Product:
+    return _product_from_parsed_page(
+        url,
+        response.text,
+        _parser_from_response(response),
+        "Amazon",
     )
-    image = parser.meta.get("og:image") or parser.meta.get("twitter:image") or parser.meta.get("image") or ""
-    price_text = (
-        parser.meta.get("product:price:amount")
-        or parser.meta.get("price")
-        or parser.meta.get("twitter:data1")
-        or ""
-    )
 
-    for script in parser.ld_json:
-        try:
-            data = json.loads(unescape(script))
-        except json.JSONDecodeError:
-            continue
-        items = data if isinstance(data, list) else [data]
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            offers = item.get("offers") if isinstance(item.get("offers"), dict) else {}
-            title = title or str(item.get("name") or "")
-            image_value = item.get("image")
-            if not image and isinstance(image_value, str):
-                image = image_value
-            if not image and isinstance(image_value, list) and image_value:
-                image = str(image_value[0])
-            price_text = price_text or str(offers.get("price") or "")
 
-    if not price_text:
-        match = re.search(r'"price"\s*:\s*"?([0-9]+(?:[,.][0-9]+)?)"?', response.text)
+def _shopee_ids(url: str) -> tuple[str, str] | None:
+    patterns = [
+        r"\.i\.(\d+)\.(\d+)",
+        r"/product/(\d+)/(\d+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
         if match:
-            price_text = match.group(1)
+            return match.group(1), match.group(2)
+    return None
 
-    if not title or not price_text:
-        raise RuntimeError("Nao consegui ler titulo e preco desse link. Informe os dados manualmente.")
+
+def _from_shopee_api(url: str, final_url: str) -> Product | None:
+    ids = _shopee_ids(final_url) or _shopee_ids(url)
+    if not ids:
+        return None
+    shop_id, item_id = ids
+    headers = dict(HEADERS)
+    headers["Referer"] = final_url
+    response = requests.get(
+        "https://shopee.com.br/api/v4/item/get",
+        params={"shopid": shop_id, "itemid": item_id},
+        headers=headers,
+        timeout=30,
+    )
+    if not response.ok:
+        return None
+    data = response.json().get("data") or {}
+    if not data:
+        return None
+
+    price_value = data.get("price") or data.get("price_min") or 0
+    price = float(price_value) / 100000
+    images = data.get("images") or []
+    image_hash = images[0] if images else data.get("image", "")
+    thumbnail = f"https://down-br.img.susercontent.com/file/{image_hash}" if image_hash else ""
 
     return Product(
-        title=_clean_title(title),
-        price=_normal_price(str(price_text)),
+        title=data.get("name", "Produto Shopee"),
+        price=price,
         permalink=url,
-        thumbnail=image,
-        sold_quantity=0,
-        available_quantity=1,
+        thumbnail=thumbnail,
+        sold_quantity=int(data.get("historical_sold", 0) or 0),
+        available_quantity=int(data.get("stock", 1) or 1),
+        marketplace="Shopee",
+    )
+
+
+def _from_shopee_link(url: str, final_url: str, response: requests.Response) -> Product:
+    api_product = _from_shopee_api(url, final_url)
+    if api_product:
+        return api_product
+    return _product_from_parsed_page(
+        url,
+        response.text,
+        _parser_from_response(response),
+        "Shopee",
     )
 
 
@@ -227,6 +360,13 @@ def product_from_link(url: str) -> Product:
     response = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
     response.raise_for_status()
     final_url = response.url
+    marketplace = _marketplace_from_url(final_url or url)
+
+    if marketplace == "Amazon":
+        return _from_amazon_link(url, response)
+    if marketplace == "Shopee":
+        return _from_shopee_link(url, final_url, response)
+
     item_id = _extract_item_id(final_url) or _extract_item_id(url)
 
     social_product = _from_social_html(response.text, url)
@@ -239,7 +379,7 @@ def product_from_link(url: str) -> Product:
         except requests.RequestException:
             pass
 
-    return _from_html(final_url)
+    return _from_html(final_url, marketplace)
 
 
 def search_products(

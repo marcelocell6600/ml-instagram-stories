@@ -1,6 +1,12 @@
-# Automacao Mercado Livre para Stories do Instagram
+# Automacao de Ofertas para Stories do Instagram
 
-Projeto simples para buscar produtos no Mercado Livre, gerar uma imagem vertical de story e publicar no Instagram usando a API oficial.
+Projeto simples para transformar links de ofertas em uma imagem vertical de story com foto, titulo, preco, QR Code e link para usar no sticker do Instagram.
+
+Atualmente o app tenta ler automaticamente links de:
+
+- Mercado Livre
+- Amazon
+- Shopee
 
 ## Requisitos
 
@@ -46,7 +52,7 @@ Depois acesse:
 http://127.0.0.1:5055
 ```
 
-Cole o link do Mercado Livre e clique em `Gerar Story`. O app tenta puxar titulo, preco e imagem automaticamente, gera o QR Code com o proprio link e salva o JPG em `output/stories`.
+Cole o link da oferta e clique em `Gerar Story`. O app tenta puxar titulo, preco e imagem automaticamente, gera o QR Code com o proprio link e salva o JPG em `output/stories`.
 
 ## Usar pelo celular na mesma rede Wi-Fi
 
@@ -140,7 +146,7 @@ No iPhone, rodar este projeto localmente e mais limitado porque ele depende de P
 
 Este e o fluxo mais simples: o script gera um JPG vertical pronto para story e salva em `output/stories`.
 
-Com apenas o link do Mercado Livre:
+Com apenas o link da oferta:
 
 ```sh
 python src/main.py --dry-run --from-link "https://www.mercadolivre.com.br/..."
