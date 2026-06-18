@@ -88,52 +88,105 @@ def _render_page(
   <title>Story de Ofertas</title>
   <style>
     * {{ box-sizing: border-box; }}
+    :root {{
+      --bg: #050507;
+      --panel: #0c0d12;
+      --panel-2: #11131b;
+      --text: #f7f7fb;
+      --muted: #aeb5c8;
+      --line: #282b3c;
+      --blue: #00a7ff;
+      --purple: #b22cff;
+      --pink: #ff2bd6;
+      --green: #11d35e;
+      --danger: #ff4d6d;
+    }}
     body {{
       margin: 0;
       min-height: 100vh;
       font-family: Arial, Segoe UI, sans-serif;
-      background: #f7d800;
-      color: #242424;
+      background:
+        radial-gradient(circle at 82% 12%, rgba(178, 44, 255, 0.24), transparent 30%),
+        radial-gradient(circle at 12% 78%, rgba(0, 167, 255, 0.18), transparent 34%),
+        linear-gradient(145deg, #050507 0%, #080913 55%, #050507 100%);
+      color: var(--text);
+    }}
+    body::before {{
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(110deg, transparent 0 18%, rgba(0, 167, 255, 0.32) 18.2%, transparent 18.7%),
+        linear-gradient(165deg, transparent 0 68%, rgba(255, 43, 214, 0.22) 68.2%, transparent 68.8%);
+      opacity: 0.55;
     }}
     .shell {{
       width: min(1180px, calc(100vw - 32px));
       margin: 0 auto;
-      padding: 34px 0;
+      padding: 34px 0 20px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
       gap: 28px;
       align-items: start;
+      position: relative;
+      z-index: 1;
     }}
     header {{
-      margin-bottom: 24px;
+      margin-bottom: 20px;
+      display: grid;
+      gap: 10px;
     }}
     h1 {{
       margin: 0;
-      font-size: 38px;
+      font-size: 42px;
       line-height: 1.05;
       letter-spacing: 0;
     }}
+    .eyebrow {{
+      color: var(--blue);
+      font-size: 14px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }}
+    .lead {{
+      margin: 0;
+      max-width: 620px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.45;
+    }}
     .panel {{
-      background: #ffffff;
-      border: 2px solid #242424;
+      background: linear-gradient(180deg, rgba(17, 19, 27, 0.96), rgba(9, 10, 16, 0.96));
+      border: 1px solid rgba(0, 167, 255, 0.45);
       border-radius: 8px;
-      padding: 22px;
-      box-shadow: 8px 8px 0 #242424;
+      padding: 24px;
+      box-shadow: 0 0 0 1px rgba(178, 44, 255, 0.18), 0 18px 55px rgba(0, 0, 0, 0.45);
     }}
     label {{
       display: block;
       margin-bottom: 8px;
       font-weight: 700;
       font-size: 15px;
+      color: var(--text);
     }}
     input {{
       width: 100%;
-      height: 48px;
-      border: 2px solid #242424;
+      height: 52px;
+      border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 0 12px;
+      padding: 0 14px;
       font: inherit;
-      background: #fffef2;
+      background: #06070c;
+      color: var(--text);
+      outline: none;
+    }}
+    input:focus {{
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(0, 167, 255, 0.18);
+    }}
+    input::placeholder {{
+      color: #7d8498;
     }}
     .row {{
       display: grid;
@@ -146,22 +199,29 @@ def _render_page(
     }}
     details {{
       margin-top: 16px;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
     }}
     summary {{
       cursor: pointer;
       font-weight: 700;
+      color: var(--muted);
     }}
     button {{
       margin-top: 20px;
       width: 100%;
-      height: 52px;
+      height: 56px;
       border: 0;
       border-radius: 6px;
-      background: #00a650;
+      background: linear-gradient(90deg, var(--blue), var(--purple), var(--pink));
       color: #ffffff;
       font: inherit;
       font-weight: 800;
       cursor: pointer;
+      box-shadow: 0 12px 34px rgba(0, 167, 255, 0.2);
+    }}
+    button:hover {{
+      filter: brightness(1.08);
     }}
     .image-actions {{
       display: grid;
@@ -174,10 +234,11 @@ def _render_page(
       place-items: center;
       min-height: 42px;
       border-radius: 6px;
-      background: #242424;
-      color: #ffffff;
+      background: #171a25;
+      color: var(--text);
       font-weight: 800;
       text-decoration: none;
+      border: 1px solid var(--line);
     }}
     .copy-link {{
       display: grid;
@@ -204,8 +265,8 @@ def _render_page(
       border-radius: 6px;
       font-weight: 700;
     }}
-    .ok {{ background: #e5f7ed; color: #075c31; }}
-    .error {{ background: #ffe7e7; color: #8a1010; }}
+    .ok {{ background: rgba(17, 211, 94, 0.14); color: #83ffb5; border: 1px solid rgba(17, 211, 94, 0.34); }}
+    .error {{ background: rgba(255, 77, 109, 0.14); color: #ff9aad; border: 1px solid rgba(255, 77, 109, 0.34); }}
     .preview {{
       display: grid;
       gap: 14px;
@@ -214,13 +275,14 @@ def _render_page(
       width: 100%;
       max-height: calc(100vh - 140px);
       object-fit: contain;
-      background: #242424;
+      background: #050507;
       border-radius: 8px;
-      border: 2px solid #242424;
+      border: 1px solid rgba(178, 44, 255, 0.46);
+      box-shadow: 0 18px 55px rgba(0, 0, 0, 0.5);
     }}
     .result {{
-      background: #ffffff;
-      border: 2px solid #242424;
+      background: rgba(12, 13, 18, 0.96);
+      border: 1px solid var(--line);
       border-radius: 8px;
       padding: 14px;
       display: grid;
@@ -229,21 +291,35 @@ def _render_page(
     .result span {{
       font-size: 13px;
       font-weight: 700;
-      color: #666666;
+      color: var(--muted);
     }}
     .result strong {{
       font-size: 14px;
       overflow-wrap: anywhere;
+      color: var(--text);
+    }}
+    .footer {{
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 0 0 24px;
+      position: relative;
+      z-index: 1;
+      color: #858ca0;
+      font-size: 14px;
     }}
     @media (max-width: 860px) {{
       .shell {{
         grid-template-columns: 1fr;
+        padding-top: 24px;
       }}
       h1 {{
-        font-size: 30px;
+        font-size: 34px;
       }}
       .row {{
         grid-template-columns: 1fr;
+      }}
+      .lead {{
+        font-size: 16px;
       }}
     }}
   </style>
@@ -252,7 +328,9 @@ def _render_page(
   <main class="shell">
     <section>
       <header>
+        <div class="eyebrow">Marcelo Cell</div>
         <h1>Story de Ofertas</h1>
+        <p class="lead">Cole o link da oferta, gere a arte pronta e publique no Instagram com QR Code e link do produto.</p>
       </header>
       <form class="panel" method="post" action="/generate">
         <label for="link">Link da oferta</label>
@@ -282,6 +360,7 @@ def _render_page(
     </section>
     {preview}
   </main>
+  <footer class="footer">© Marcelo Ribeiro</footer>
   <script>
     async function copyStoryLink() {{
       const input = document.getElementById('story-link');
